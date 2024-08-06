@@ -31,7 +31,7 @@ for p = 1:P
     if P > 1, subplot(1, P, p), end 
     
     % visualize the matrix
-    himg = imagesc(A(:, :, p),[50 100]);
+    himg = imagesc(A(:, :, p),[40 100]);
     
     grid on
     
@@ -64,9 +64,10 @@ for p = 1:P
     % set the datatip UpdateFcn
     cursorMode = datacursormode(gcf);
     set(cursorMode, 'UpdateFcn', {@datatiptxt, himg})
-    colorbar
+    
     colormap('gray');
-    himg.AlphaData = .75;
+    colorbar
+    himg.AlphaData = 1;
     axis(ax,'equal')
     axis(ax,'tight')
 end
