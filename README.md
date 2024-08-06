@@ -19,17 +19,17 @@ read .xlsx file with data collected with Imaris 'spot' function
 
 FP 24/7 10 minutes per hour
 SynFP_get_dF_time_series;
-get_time_series_FP_single_trial;
-get data of one trail and calculates dF/F
+get_time_series_FP_single_trial_v2;
+gets data of one trail and calculates dF/F
 
-get_time_series_FP_per_mouse;
+get_time_series_FP_per_mouse_v2;
 analyse dataset of one mouse
 
 get_time_series_FP;
 read the whole dataset 
 
 FP 24/7 FFT cross-validation classification
-FP_FFT_output_for_classifier ; 
+FP_FFT_output_for_classifier_v2 ; 
 run classification after 
 
 FP ZT10-13
@@ -45,8 +45,8 @@ Compare the whole dataset, estrous-cycle dependent
 get_LDtransition_FP_male_female 
 Compare males-females only 
 
-FP_LDtransition_FFT_output_for_classifier ;
-used to run classification after "get_LDtransition_FP_per_mouse" is done for all the mice in the dataset
+FP_LDtransition_FFT_output_for_classifier_v2 ;
+used to run classification after "get_LDtransition_FP_per_mouse_v2" is done for all the mice in the dataset
 
 
 Oocyte release
