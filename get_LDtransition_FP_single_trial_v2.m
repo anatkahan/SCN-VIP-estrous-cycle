@@ -12,16 +12,14 @@ if nargin==0
     %mouse_info.ID='198L'; mouse_info.side='R';trial_info.rig='SynTDT';
     %mouse_info.ID='200RR'; mouse_info.side='R';trial_info.rig='SynTDT';
     
-    
     trial_info.date='050219';%MMDDYY
     trial_info.sess_num=1;   trial_info.estrus=[];
     trial_info.onset_sess_num=[];
     %trial_info.to_remove=[];
     trial_info.show=1;
     trial_info.path='D:\DATA_Glab\fiberphotometry\';
-    analysis_params.std_thresh=1;
-    analysis_params.F=1;
-    analysis_params.n_windows=15;
+    analysis_params.std_thresh=0;
+    analysis_params.F=0.5;
     plot_fft=1;
     plot1=1;
 else
@@ -32,7 +30,7 @@ end
 do_ACF=0;% autocorr
 
 rig=trial_info.rig;
-n_minutes=60;
+n_minutes=59;
 trial_info.length=2*(n_minutes*60)/60; % time in minutes 
 
 files1=['VIPGC' mouse_info.ID '_' mouse_info.side 'fiber_' trial_info.date '_Sess' num2str(trial_info.sess_num)];
@@ -89,7 +87,7 @@ end
  [data.dF] = fit_ref(data);
 % plot(data.t,dF)
 %  calculate dF/F 
-baseline2=data.dF(4*end/5:end);
+baseline2=data.dF(2*end/3:end);
 B3 = rmmissing(baseline2);% remove nan
 
 [dF_F]=get_df_from_raw_data_v6(data.dF,B3,params);    
@@ -97,26 +95,24 @@ B3 = rmmissing(baseline2);% remove nan
  % check how the data looks like
  if plot1
      figure
-     plot(data.t,data.dF); hold on % before data processing 
-     plot(data.t,dF_F); hold on % after 
+     plot(data.t,data.dF); hold on
+     plot(data.t,dF_F); hold on
      ylim([-20 35])
  end
 % recording starts at ZT10 for 2 hours 
-% devide data to intervals of X minutes. Data is 150 or 120 minutes total 
-% ZT11 to 12 start times % adds the ZT10 start times 
-switch analysis_params.n_windows
-    case 3
-        bin_size=n_minutes; % minutes
-        t_start=[-60:bin_size:trial_info.length-bin_size+1]*60; % in seconds
-        t_end=[-30 60:bin_size:trial_info.length]*60; % in seconds
-    case 15
-        bin_size=10; % minutes
-        t_start=[-60:bin_size:trial_info.length-bin_size+1]*60; % in seconds
-        t_end=[-50:bin_size:trial_info.length]*60; % in seconds
-end
+% devide data to intervals of 10 minutes, which will be similar to 10
+% minutes of 24/7 data. Data is 120 minutes total 
+bin_size=10; % minutes
 
-for hi=1:length(t_start)
-    inds=intersect(find(data.t>t_start(hi)),find(data.t<=t_end(hi)));
+% ZT11 to 12 start times
+t_start=[0:bin_size:trial_info.length]; % in minutes
+% adds the ZT10 start times 
+t_start=[-60:bin_size:-30, t_start]*60;% in seconds
+
+
+
+for hi=1:length(t_start)-1
+    inds=intersect(find(data.t>t_start(hi)),find(data.t<t_start(hi+1)));
     if  isempty(inds) % will skip -1800 to 0, and also sessions that there are no onsetSess
         divided_data{hi}.dF=[];
         divided_data{hi}.t=[];
@@ -131,95 +127,86 @@ for hi=1:length(t_start)
     end
 end
 clear new_divided_data
-new_divided_data=divided_data;
-
-% finds the largest length that fits all / might not be needed for the DL transition 
-L=[];T=[];
-for i=1:length(new_divided_data)
-    L=[L; length(new_divided_data{i}.dF)]; 
-   % T=[T; max(new_divided_data{i}.t)]; 
-end
-maxL=max(L(L~=0));
-% adds nan to arrays that are not long enough at the end
-for i=1:length(new_divided_data)
-    if length(new_divided_data{i}.dF)<maxL
-        new_divided_data{i}.dF=[new_divided_data{i}.dF nan(1,maxL-length(new_divided_data{i}.dF))];
-        new_divided_data{i}.t=[new_divided_data{i}.t nan(1,maxL-length(new_divided_data{i}.t))];
+if is_onset % remove the forth, which is missleading
+    k=0;
+    for i=[1:3,5:numel(divided_data)]
+        k=k+1;
+        new_divided_data{k}.t=divided_data{i}.t;
+        new_divided_data{k}.dF=divided_data{i}.dF;
     end
-    T=[T; max(new_divided_data{i}.t)];
+else
+    new_divided_data=divided_data;
 end
 
+
+% finds the right length that fits all / might not be needed for the DL transition 
+L=[];
+for i=1:length(new_divided_data)
+    L=[L; length(new_divided_data{i}.dF(1:end-1))]; 
+end
+minL=min(L(L~=0));
+% get data from file
+dF_raw=[];
+t_raw=[];
+for i=1:length(new_divided_data)
+    if ~isempty(new_divided_data{i}.dF)
+        dF_raw=[dF_raw; new_divided_data{i}.dF(1:minL)];
+        t_raw=[t_raw; new_divided_data{i}.t(1:minL)];
+    end
+end
 % interpolate the data to a constant fs, new_fs (TDT and SynTDT has different
 % sampling rate)
-
-% get data from file% interpolate the data to a constant fs
-clear t_intrlp dF_intrlp
-for i=1:length(new_divided_data)
-    if ~isempty(new_divided_data{i}.dF) && ~isempty(find(~isnan(new_divided_data{i}.dF))) % empty or nan
-        new_fs=382;% Hz, per sect
-        if abs(new_fs-fs)<0.001
-            dF_intrlp{i}=new_divided_data{i}.dF;
-            t_intrlp{i}=new_divided_data{i}.t;
-        else % if not the same fs, need to interpolate the data
-            t_intrlp{i}=t_start(i):(1/new_fs):t_end(i) ;
-            this_df=new_divided_data{i}.dF;
-            TTT=new_divided_data{i}.t(~isnan(this_df)); % just to check it
-            dF_intrlp{i}=interp1(new_divided_data{i}.t(~isnan(this_df)),this_df(~isnan(this_df)),t_intrlp{i});
-        end
+clear t dF
+new_fs=382;% Hz, per sec
+L2(1)=length(t_raw(1,1):(1/new_fs):t_raw(1,end));
+k=0;
+for i=1:size(dF_raw,1)
+    if ~isempty(dF_raw(i,:))
+       L2(i)=length(t_raw(i,1):(1/new_fs):t_raw(i,end));
+       if L2(i)== L2(1) % get rid of the forth array
+           k=k+1;
+            t(k,:)=t_raw(i,1):(1/new_fs):t_raw(i,end);
+            % t(k,:)=t_raw(i,1):(1/new_fs):(t_raw(i,1)+600); creates NaN in FFT - why???
+            dF(k,:)=interp1(t_raw(i,:),dF_raw(i,:),t(k,:));
+       end
     end
 end
 
-% put the new interpolated data into a new array, dF_raw and t_raw
-dF_raw=[];t_raw=[]; 
-MAXL=max(cellfun(@length,dF_intrlp));
-for i=1:length(dF_intrlp)
-    if length(dF_intrlp{i})<MAXL
-        dF_raw=[dF_raw; [dF_intrlp{i} nan(1,MAXL-length(dF_intrlp{i}))]];
-        t_raw=[t_raw; [t_intrlp{i} nan(1,MAXL-length(t_intrlp{i}))]];
-    else
-        dF_raw=[dF_raw; dF_intrlp{i}];
-        t_raw=[t_raw; t_intrlp{i}];
-    end  
-end
 
-% check the interpolation: 
-check=0;
-if check
+plot1=0;
+if plot1
     figure
-    for i=1:length(new_divided_data)
-        plot( new_divided_data{i}.t,  new_divided_data{i}.dF);hold on
-        plot( t_raw(i,:),  dF_raw(i,:)+10);hold on
+    for i=1:size(dF,1)
+         plot(t_raw(i,:),dF_raw(i,:),'k'); hold on;
+        plot(t(i,:),dF(i,:)+2); hold on;
+       
     end
 end
-dF=dF_raw;
-t=t_raw;
 
-% calculated peak_thresh based on the Z11-12 session  
-switch analysis_params.n_windows
-    case 3
-        if length(dF)>2; inds=2; else; inds=1; end
-    case 15
-        inds=[13:18];
-end
-analysis_params.peak_thresh=analysis_params.F*nanmedian(nanmedian(dF(inds,:)))+analysis_params.std_thresh*nanstd(nanstd(dF(inds,:)));
+
+
+% 
+% dF_array=reshape(dF,1,size(dF,1)*size(dF,2));
+% t_array=reshape(t,1,size(t,1)*size(t,2));
+% figure; plot(t_array,dF_F);
+%dF_array=rmmissing(dF_array);% removes nan
+analysis_params.peak_thresh=analysis_params.F*nanmedian(dF_F)+analysis_params.std_thresh*nanstd(dF_F);
 
 % calculates event params
-plot2=1;
+plot2=0;
 if plot2
     figure
 end
 for hi=1:size(dF,1)
-   
-    if sum(isnan(dF(hi,:)))<length(dF(hi,:))
-        
-        [allpks{hi},alllocs{hi},allw{hi},allp{hi}]=findpeaks(dF(hi,~isnan(dF(hi,:))),t(hi,~isnan(dF(hi,:))),'Annotate','extents','MinPeakProminence', analysis_params.peak_thresh);
+    if mean(isnan(dF(hi,:)))==0
+        [allpks{hi},alllocs{hi},allw{hi},allp{hi}]=findpeaks(dF(hi,:),t(hi,:),'Annotate','extents','MinPeakProminence', analysis_params.peak_thresh);
         %[allpks{hi},alllocs{hi},allw{hi},allp{hi}]=findpeaks(dF(hi,floor(5*fs):end),t(hi,floor(5*fs):end),'Annotate','extents','MinPeakProminence', analysis_params.peak_thresh);
         % DO NOT delete this. use to check if needed
         if plot2
-            subplot(1,ceil(size(dF,1)),hi)
-            findpeaks(dF(hi,~isnan(dF(hi,:))),t(hi,~isnan(dF(hi,:))),'Annotate','extents','MinPeakProminence', analysis_params.peak_thresh);hold on
-            ylim([-20 60] )
-            title([mouse_info.ID ' sess ' num2str(trial_info.sess_num) ' ' trial_info.date])
+            subplot(2,ceil(size(dF,1)/2),hi)
+            findpeaks(dF(hi,:),t(hi,:),'Annotate','extents','MinPeakProminence', analysis_params.peak_thresh);hold on
+            ylim([-20 35] )
+            title([mouse_info.ID ' sess ' num2str(trial_info.sess_num)])
         end
     else
         allpks{hi}=[]; alllocs{hi}=[];allw{hi}=[]; allp{hi}=[];
@@ -232,21 +219,20 @@ for hi=1:size(dF,1)
     if ~isempty(allpks{hi})
         width(hi)=nanmedian(allw{hi});
         height(hi)=nanmedian(allp{hi});
-        rate(hi)=length(allpks{hi})/(abs(max(t(hi,:))-min(t(hi,:)))/60);% event per minute, t periods are 600 minutes- 10 minutes*60 sec
+        rate(hi)=length(allpks{hi})/((t(hi,end)-t(hi,1))/60);% event per minute, t periods are 600 minutes- 10 minutes*60 sec
     else
         height(hi)=nan;
         width(hi)=nan;
-        rate(hi)=nan;
+        rate(hi)=0;
     end
 end
 % calculates df integral
 for hi=1:size(dF,1)
-    int_df(hi)=sum(dF(hi,floor(5*new_fs):end)); % skip the first 10 samples
+    int_df(hi)=sum(dF(hi,floor(10*new_fs):end)); % skip the first 10 samples
 end
  
 if  abs(size(dF,2)/(bin_size*60)-new_fs)>new_fs*0.1; disp([mouse_info.ID ' sess ' num2str(trial_info.sess_num) ': WRONG fs']); end 
-disp([ 'dF size = ' num2str(size(dF,2))]) 
-
+ 
 A_length=size(dF,1);
 if trial_info.show==1
     % plot dF
@@ -272,9 +258,6 @@ end
 
 
 %% fft analysis Jan 2022
-% skip the first 30 points 
-clear L1 P2 P1 f B1
-dF(isnan(dF))=0;
 Y = fft(dF(:,floor(30*new_fs):end)'); 
 %Compute the two-sided spectrum P2. Then compute the single-sided spectrum P1 based on P2 and the even-valued signal length L.
 L1=size(Y,1);
@@ -290,7 +273,7 @@ B1 = smoothdata(P1,1,'gaussian',GW);
 % find the mean frequencies of the obsereved peaks
 %GW=[12 180 180];% the first window fits low freq, up to 0.03Hz. the second fits the 0.5 to 2 Hz
 %f_limits=[0 0.03 ;0.5 1.1; 1.2 1.8];% define the interval for freq max identification to be avergaed
-f_limits=[0.0005 0.03 ;0.03 0.1; 0.1 0.35];% define the interval for freq max identification to be avergaed
+f_limits=[0 0.03 ;0.03 0.5; 0.5 1.6];% define the interval for freq max identification to be avergaed
 %f_limits=[0 0.03 ;0.5 1.6];%HZ define the interval for freq max identification to be avergaed
 %f_limits=[0 0.03 ;0.03 0.2];%HZ define the interval for freq max identification to be avergaed
 
@@ -315,7 +298,7 @@ else; ALL_colors=[0 0 0; 0.4 0.4 0.4]; color_ind=1;end
 
 
 if plot_fft
-    if size(B1,2)>11; n_color=8; else n_color=3; end
+    if size(B1)>11; n_color=8; else n_color=6; end
     figure;
     subplot(2,2,1)
     for di=[1:n_color]

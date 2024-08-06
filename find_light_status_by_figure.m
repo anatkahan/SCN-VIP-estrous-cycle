@@ -1,10 +1,8 @@
 function light_array=find_light_status_by_figure(all_dF,full_Sname,files1)
 
-if ~isfield(all_dF,'TTL')
-    TTL=[];
-else
-    TTL=all_dF.TTL;
-end
+TTL=all_dF.TTL;
+%my_path='D:\'
+my_path='Z:\Anat\'
 
 Sname=full_Sname(1:end-1);
 if str2num(Sname(end))>0
@@ -18,9 +16,9 @@ if contains(full_Sname,'test6RredXXhigh') || contains(full_Sname,'test6RredXmed'
 end
 
 %TTL=df.TTL;
-Ex=exist(['D:\DATA_Glab\fiberphotometry\TDT_FP\light_array\' files1 '_light.mat']);
+Ex=exist([my_path 'DATA_Glab\fiberphotometry\TDT_FP\light_array\' files1 '_light.mat']);
 if Ex>0
-    load(['D:\DATA_Glab\fiberphotometry\TDT_FP\light_array\' files1 '_light'],'light_array')
+    load([my_path 'DATA_Glab\fiberphotometry\TDT_FP\light_array\' files1 '_light'],'light_array')
 else
    
     if contains(full_Sname,'test6Rred') || isempty(TTL)
@@ -31,7 +29,7 @@ else
             [x,y] = ginput(1); % choose 1 cursors which is the begining of the first light on
             
             disp([num2str(x) ' sec: start of red light'])
-            phase=0;% might need adjustment for specific mice
+            phase=1;% might need adjustment for specific mice
             light_array.light_off=[x+15:45:x+45*5+15]'-phase;
             light_array.light_on= [x:45:x+45*5]'-phase;
             light_array.exp='test6Rred';
@@ -107,7 +105,7 @@ else
             light_array.exp=Sname;
     end
     
-    save(['D:\DATA_Glab\fiberphotometry\TDT_FP\light_array\' files1 '_light'],'light_array')
+    save([my_path 'DATA_Glab\fiberphotometry\TDT_FP\light_array\' files1 '_light'],'light_array')
 end
 
 

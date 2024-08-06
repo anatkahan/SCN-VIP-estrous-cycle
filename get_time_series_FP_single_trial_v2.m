@@ -1,4 +1,4 @@
-function [dF,t,analysis]=get_time_series_FP_single_trial(mouse_info, trial_info,analysis_params);
+function [dF,t,analysis]=get_time_series_FP_single_trial_v2(mouse_info, trial_info,analysis_params);
 % get time_series data and calculate event and dF 
 % read by ' get_time_series_FP_per_mouse'
  % Jan 2022: updated anaysis: 
@@ -9,28 +9,33 @@ clear y data
 if nargin==0
    %mouse_info.ID='198R'; mouse_info.side='R';trial_info.rig='SynTDT';
    % mouse_info.ID='200LL'; mouse_info.side='R';
-    %mouse_info.ID='246RL'; mouse_info.side='R';
- mouse_info.ID='259R'; mouse_info.side='R';trial_info.rig='SynTDT';
+  mouse_info.ID='246RL'; mouse_info.side='R';trial_info.rig='SynTDT';
+% mouse_info.ID='259R'; mouse_info.side='R';trial_info.rig='SynTDT';
    % mouse_info.ID='260L'; mouse_info.side='L';
 %   mouse_info.ID='261RL'; mouse_info.side='R';trial_info.rig='SynTDT';
  %   mouse_info.ID='262R'; mouse_info.side='R'; trial_info.rig='SynTDT';
  %    mouse_info.ID='273RL'; mouse_info.side='R'; trial_info.rig='TDT';
     %   mouse_info.ID='288RL'; mouse_info.side='R';trial_info.rig='SynTDT';% male
      %   mouse_info.ID='313RL'; mouse_info.side='R';trial_info.rig='SynTDT';%female
+  
+  % mouse_info.ID='366R'; mouse_info.side='L';trial_info.rig='SynTDT';
    
-    trial_info.date='102020';%MMDDYY
-    trial_info.sess_num=6;  trial_info.to_remove=[];
+   
+    %trial_info.date='102020';%MMDDYY
+     trial_info.date='091120';%MMDDYY
+    trial_info.sess_num=17;  trial_info.to_remove=[];
     trial_info.estrus=[];
    
     trial_info.show=1;
-    trial_info.path='Z:\Anat\DATA_Glab\fiberphotometry\';
-   % trial_info.path='D:\DATA_Glab\fiberphotometry\';
+    %trial_info.path='D:\DATA_Glab\fiberphotometry\';
+     trial_info.path='Z:\Anat\DATA_Glab\fiberphotometry\';
     analysis_params.std_thresh=1.5;
     plot_fft=1;
 else
     plot_fft=0;
     trial_info.show=0;
 end
+
 
 rig=trial_info.rig;
 
@@ -176,24 +181,92 @@ B1 = smoothdata(P1,1,'gaussian',GW);
 % find the mean frequencies of the obsereved peaks
 %GW=[12 180 180];% the first window fits low freq, up to 0.03Hz. the second fits the 0.5 to 2 Hz
 %f_limits=[0 0.03 ;0.5 1.1; 1.2 1.8];% define the interval for freq max identification to be avergaed
-f_limits=[0 0.03 ;0.03 0.5; 0.5 1.6];% define the interval for freq max identification to be avergaed
+%f_limits=[0.0033 0.03 ;0.03 0.5; 0.5 1.6];% define the interval for freq max identification to be avergaed. minimum is half of 10 minutes (longer can't be detected) 
 %f_limits=[0 0.03 ;0.5 1.6];%HZ define the interval for freq max identification to be avergaed
 %f_limits=[0 0.03 ;0.03 0.2];%HZ define the interval for freq max identification to be avergaed
-
+f_limits=[0.0033 0.007 ;0.007 0.05; 0.05 0.1; 0.1 0.25; 0.25 0.45; 0.45 1; 1.0 1.35]; % Hz
 
 for wi=1:size(f_limits,1)
-    for di=1:size(B1,2)
+    for hi=1:size(B1,2)% over 24h
         
         f_inds=intersect(find(f>f_limits(wi,1)),find(f<f_limits(wi,2)));
         if ~isempty(f_inds)
-            B1_int(wi,di)=sum(B1(f_inds,di));
+            B1_int(wi,hi)=sum(B1(f_inds,hi));
         else
-            B1_int(wi,di)=nan;
+            B1_int(wi,hi)=nan;
+        end
+    end
+end
+
+%% calculate aurocorrelation of one 10 minutes trial
+FFTautoCorrleadingFreqs=[];
+FFTautoCorrPks=[];
+num_F=3; %number of leading frequencies
+median_factor=0.00025;
+
+if trial_info.show==1 ; figure; end
+for hi=1:size(dF,1)
+    clear acf lags
+    %plot(f,log(B1(:,1)))
+    P1=B1(:,hi);
+    L1=length(P1)-round(length(P1)*0.9995);
+    if sum(isnan(P1))>0.5*length(P1); % in case all is nan
+        acf=nan;
+        lags=nan;
+    else
+        [acf,lags]=autocorr(double(P1),'NumLags',L1);
+        if trial_info.show==1 ; autocorr(double(P1),'NumLags',L1);hold on; grid on; end
+
+
+        % Find the peaks
+        %[pks, locs] = findpeaks(acf(1:L1),f(1:L1), 'MinPeakProminence', 0.000025*median(acf)); % Adjust 'MinPeakHeight' as needed
+        [pks, locs] = findpeaks(acf(1:L1), 'MinPeakProminence', median_factor*median(acf)); % Adjust 'MinPeakHeight' as needed
+
+        if trial_info.show==1 ; findpeaks(acf(1:L1),f(1:L1), 'MinPeakProminence', median_factor*median(acf)); end
+        % Sort the peaks
+        [sortedPks, sortedIdx] = sort(pks, 'descend');
+        % Get the leading frequencies
+        while length(sortedPks)<num_F
+            sortedPks=[sortedPks; nan];
+        end
+
+        if ~isempty(sortedIdx) 
+            allleadingFreqs = f(locs(sortedIdx));
+            while length(allleadingFreqs)<num_F
+                allleadingFreqs=[allleadingFreqs nan];
+            end
+        else
+            allleadingFreqs=[nan nan nan];
+        end
+        FFTautoCorrleadingFreqs=[FFTautoCorrleadingFreqs; allleadingFreqs(1:num_F)];% in Hz
+        FFTautoCorrPks=[FFTautoCorrPks; sortedPks(1:num_F)']; % freq amplitudes
+        % Annotate the leading frequencies on the plot
+        hold on;
+        % numPeaksToAnnotate = min(7, length(sortedPks)); % Adjust this number as needed
+        % for i = 1:numPeaksToAnnotate
+        %     text(leadingFreqs(i), sortedPks(i), sprintf('%.2f Hz', leadingFreqs(i)), 'VerticalAlignment', 'bottom', 'HorizontalAlignment', 'right');
+        % end
+        % hold off;
+        %
+    end
+end
+
+% creates histogram of the autocorrelation (AC) contributing frequencies
+% (top 10)
+for wi=1:size(f_limits,1)
+    for hi=1:size(FFTautoCorrleadingFreqs,1)% over 24h
+        f_inds=intersect(find(FFTautoCorrleadingFreqs(hi,:)>f_limits(wi,1)),find(FFTautoCorrleadingFreqs(hi,:)<f_limits(wi,2)));
+        if isempty(f_inds)
+            f_autoCorr_hist(wi,hi)=0;
+        else
+           f_autoCorr_hist(wi,hi)=length(f_inds); 
         end
     end
 end
 
 
+
+%% plot FFT
 % define colors
 if ~isempty(trial_info.estrus); estrus_array{1}=trial_info.estrus; [ALL_colors,color_ind]=get_estrus_colors(estrus_array); 
 else; ALL_colors=[0 0 0; 0.4 0.4 0.4]; color_ind=1;end
@@ -201,11 +274,13 @@ else; ALL_colors=[0 0 0; 0.4 0.4 0.4]; color_ind=1;end
 if plot_fft
     figure;
     subplot(2,2,1)
+    % light
     for di=[1:4,17:size(B1,2)]
         % [pks,locs] = findpeaks(B1(:,di)) ;
         ph=plot(f,B1(:,di)) ;ph.Color=[0.9290 0.6940 0.1250]; hold on;
         % plot(f(TF_all(:,di)),B1(TF_all(:,di),di)','r*'); hold on
     end
+    % dark
     for di=[5:16]
         % [pks,locs] = findpeaks(B1(:,di)) ;
         plot(f,B1(:,di),'k') ; hold on;
@@ -225,7 +300,14 @@ if plot_fft
         plot(log10(f),log10(B1(:,di)),'k') ; hold on;
     end 
     f_limits(f_limits==0)=0.0001;
-    line(log10(f_limits)',[0 0; -1 -1; -2 -2]')
+    if size(f_limits,1)==3
+        line(log10(f_limits)',[0 0; -1 -1; -2 -2 ]')
+    elseif size(f_limits,1)==5
+        line(log10(f_limits)',[0 0; -0.5 -0.5; -1 -1; -1.5 -1.5; -2 -2 ]')
+    elseif size(f_limits,1)==7
+        line(log10(f_limits)',[0 0; -0.25 -0.25; -0.5 -0.5; -0.75 -0.75; -1 -1; -1.5 -1.5; -2 -2 ]')
+
+    end
     xlim([-2.75 1.5])
     % ylim([0 10])
     xlabel('log freq (Hz)'); ylabel('log |P1(f)|')
@@ -235,26 +317,28 @@ if plot_fft
 
     %subplot(2,2,[3 4])
      figure
-    XMAX=50;
+    XMAX=1.2;
     if size(f_limits,1)>2
         %figure
         for wi=1:size(f_limits,1)
             %   subplot(size(f_limits,1),1,wi)
-            ph=plot(B1_int(wi,:)); hold on;
-            switch wi
-                case 1; ph.Color=ALL_colors(color_ind,:);
-                case 2; ph.Color=ALL_colors(color_ind+1,:);
-            end
+            ph=plot(B1_int(wi,:)/max(B1_int(wi,:))); hold on;
+            %             switch wi
+            %                 case 1; ph.Color=ALL_colors(color_ind,:);
+            %                 case 2; ph.Color=ALL_colors(color_ind+1,:);
+            %             end
+            ph.Color=[0.08*wi 0.08*wi 0.08*wi];
         end
-        ylim([0 XMAX]); ylabel('int P (a.u.)'); 
+        legend(num2str(f_limits))
+         ylim([0 XMAX]); ylabel('Normalized integrated Power (a.u.)'); 
     else
-        ph1=plot([1:24],B1_int(1,:));hold on;
+        ph1=plot([1:24],B1_int(1,:)/max(B1_int(1,:)));hold on;
         ph1.Color=ALL_colors(color_ind,:);
-        ylim([0 XMAX]); ylabel('int P low freq (a.u.)');
+        ylim([0 XMAX]); ylabel('Normalized integrated Power low freq (a.u.)');
         yyaxis right
-        ph2=plot([1:24],B1_int(2,:));hold on;
+        ph2=plot([1:24],B1_int(2,:)/max(B1_int(2,:)));hold on;
         ph2.Color=ALL_colors(color_ind,:)*0.7;
-        ylim([0 XMAX]); ylabel('int P high freq (a.u.)'); 
+        ylim([0 XMAX]); ylabel('Normalized integrated Power high freq (a.u.)'); 
     end
     xlabel('Time (hours)')
     ph=line([5 5],[0 XMAX]); ph.Color='k';
@@ -266,9 +350,6 @@ if plot_fft
 end
  % done fft 
  
- 
-%%
-
 analysis.med_width=width;
 analysis.med_amplitude=height;
 analysis.rate=rate;
@@ -277,4 +358,6 @@ analysis.int_fft=B1_int;
 analysis.int_fft_limits=f_limits;
 analysis.fft_power=B1;
 analysis.freq=f;
+analysis.FFTautoCorrleadingFreqs=FFTautoCorrleadingFreqs;
+analysis.freq_autoCorr_hist=f_autoCorr_hist;
 
